@@ -1,12 +1,13 @@
 import { DiagLogLevel } from '@opentelemetry/api'
+import { InstrumentationConfigMap } from '@opentelemetry/auto-instrumentations-node'
+import { Instrumentation } from '@opentelemetry/instrumentation'
 import { MetricReader } from '@opentelemetry/sdk-metrics'
 import { IdGenerator, SpanProcessor } from '@opentelemetry/sdk-trace-base'
 import * as logfireApi from '@pydantic/logfire-api'
 
 import { start } from './sdk'
-import { ULIDGenerator } from './ULIDGenerator'
 
-export interface AdancedLogfireConfigOptions {
+export interface AdvancedLogfireConfigOptions {
   /**
    * The logfire API base URL. Defaults to 'https://logfire-api.pydantic.dev/'
    */
@@ -46,7 +47,7 @@ export interface LogfireConfigOptions {
   /**
    * Advanced configuration options
    */
-  advanced?: AdancedLogfireConfigOptions
+  advanced?: AdvancedLogfireConfigOptions
   /**
    * Settings for the source code of the project.
    */
@@ -65,9 +66,17 @@ export interface LogfireConfigOptions {
    */
   environment?: string
   /**
+   * Additional third-party instrumentations to use.
+   */
+  instrumentations?: Instrumentation[]
+  /**
    * Set to False to disable sending all metrics, or provide a MetricsOptions object to configure metrics, e.g. additional metric readers.
    */
   metrics?: false | MetricsOptions
+  /**
+   * The node auto instrumentations to use. See [Node Auto Instrumentations](https://opentelemetry.io/docs/languages/js/libraries/#registration) for more information.
+   */
+  nodeAutoInstrumentations?: InstrumentationConfigMap
   /**
    * The otel scope to use for the logfire API. Defaults to 'logfire'.
    */
@@ -101,6 +110,13 @@ export interface LogfireConfigOptions {
 const DEFAULT_OTEL_SCOPE = 'logfire'
 const TRACE_ENDPOINT_PATH = 'v1/traces'
 const METRIC_ENDPOINT_PATH = 'v1/metrics'
+const DEFAULT_AUTO_INSTRUMENTATION_CONFIG: InstrumentationConfigMap = {
+  // https://opentelemetry.io/docs/languages/js/libraries/#registration
+  // This particular instrumentation creates a lot of noise on startup
+  '@opentelemetry/instrumentation-fs': {
+    enabled: false,
+  },
+}
 
 export interface LogfireConfig {
   additionalSpanProcessors: SpanProcessor[]
@@ -111,8 +127,10 @@ export interface LogfireConfig {
   diagLogLevel?: DiagLogLevel
   distributedTracing: boolean
   idGenerator: IdGenerator
+  instrumentations: Instrumentation[]
   metricExporterUrl: string
   metrics: false | MetricsOptions | undefined
+  nodeAutoInstrumentations: InstrumentationConfigMap
   otelScope: string
   sendToLogfire: boolean
   serviceName: string | undefined
@@ -129,9 +147,11 @@ const DEFAULT_LOGFIRE_CONFIG: LogfireConfig = {
   deploymentEnvironment: undefined,
   diagLogLevel: undefined,
   distributedTracing: true,
-  idGenerator: new ULIDGenerator(),
+  idGenerator: new logfireApi.ULIDGenerator(),
+  instrumentations: [],
   metricExporterUrl: '',
   metrics: undefined,
+  nodeAutoInstrumentations: DEFAULT_AUTO_INSTRUMENTATION_CONFIG,
   otelScope: DEFAULT_OTEL_SCOPE,
   sendToLogfire: false,
   serviceName: process.env.LOGFIRE_SERVICE_NAME,
@@ -165,9 +185,11 @@ export function configure(config: LogfireConfigOptions = {}) {
     deploymentEnvironment: cnf.environment ?? env.LOGFIRE_ENVIRONMENT,
     diagLogLevel: cnf.diagLogLevel,
     distributedTracing: resolveDistributedTracing(cnf.distributedTracing),
-    idGenerator: cnf.advanced?.idGenerator ?? new ULIDGenerator(),
+    idGenerator: cnf.advanced?.idGenerator ?? new logfireApi.ULIDGenerator(),
+    instrumentations: cnf.instrumentations ?? [],
     metricExporterUrl: `${baseUrl}/${METRIC_ENDPOINT_PATH}`,
     metrics: cnf.metrics,
+    nodeAutoInstrumentations: cnf.nodeAutoInstrumentations ?? DEFAULT_AUTO_INSTRUMENTATION_CONFIG,
     sendToLogfire,
     serviceName: cnf.serviceName ?? env.LOGFIRE_SERVICE_NAME,
     serviceVersion: cnf.serviceVersion ?? env.LOGFIRE_SERVICE_VERSION,
